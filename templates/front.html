@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+  {% if deleted_post %}
+    <div class="alert">
+      Successfully deleted post: {{deleted_post}}!
+      <span class="closebtn" onclick="this.parentElement.style.display='none';">&times;</span>
+    </div>
+  {% endif %}
+
+
+  {% if user %}
+    <div class="front-action">
+      <a href="/blog/newpost">Write post</a>
+      <br>
+      <a href="/logout">Logout</a>
+    </div>
+  {% else %}
+    <a href="/login" class="front-action">Login</a>
+  {% endif %}
+
+  {% for p in posts %}
+    {{ p.render() | safe }}
+    <br><br>
+  {% endfor %}
+
+{% endblock %}

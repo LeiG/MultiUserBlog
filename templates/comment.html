@@ -1,0 +1,10 @@
+<div class="comment">
+  <div class="comment-header">
+    <p>{{c.user_name}} - {{c.created.strftime("%b %d, %Y")}}</p>
+  </div>
+
+  <div class="comment-content">
+    {{c._render_text | safe}}
+  </div>
+
+</div>
