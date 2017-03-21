@@ -25,6 +25,8 @@ def check_secure_val(secure_val):
 
 
 class BlogHandler(webapp2.RequestHandler):
+    """Base request handler for blog.
+    """
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
 
@@ -71,28 +73,25 @@ class MainPage(BlogHandler):
 ########
 # User #
 ########
-USER_RE = re.compile(r"[a-zA-Z0-9_-]{3,20}$")
-
 
 def valid_username(username):
+    USER_RE = re.compile(r"[a-zA-Z0-9_-]{3,20}$")
     return username and USER_RE.match(username)
 
 
-PASS_RE = re.compile(r"^.{3,20}$")
-
-
 def valid_password(password):
+    PASS_RE = re.compile(r"^.{3,20}$")
     return password and PASS_RE.match(password)
 
 
-EMAIL_RE = re.compile(r"^[\S]+@[\S]+\.[\S]+$")
-
-
 def valid_email(email):
+    EMAIL_RE = re.compile(r"^[\S]+@[\S]+\.[\S]+$")
     return email and EMAIL_RE.match(email)
 
 
 class Signup(BlogHandler):
+    """Render signup-form.html with POST method for user creation.
+    """
     def get(self):
         self.render("signup-form.html")
 
@@ -135,9 +134,12 @@ class Signup(BlogHandler):
 
             self.login(u)
             self.redirect('/blog')
+            return
 
 
 class Login(BlogHandler):
+    """Render login-form.html
+    """
     def get(self):
         self.render("login-form.html", error=self.request.get('error'))
 
@@ -149,6 +151,7 @@ class Login(BlogHandler):
         if u:
             self.login(u)
             self.redirect('/blog')
+            return
         else:
             msg = 'Invalid login'
             self.render("login-form.html", error=msg)
@@ -159,14 +162,31 @@ class Logout(BlogHandler):
         if self.user:
             self.logout()
             self.redirect('/blog')
+            return
         else:
             self.redirect('/login')
+            return
+
+
+def login_required(func):
+    """A decorator to confirm a user is logged in or redirect as needed
+    """
+    def login(self, *args, **kwargs):
+        if not self.user:
+            self.redirect(
+                "/login?error=You need to login in to perform the action!"
+            )
+        else:
+            func(self, *args, **kwargs)
+    return login
 
 
 ########
 # Post #
 ########
 class BlogFront(BlogHandler):
+    """Render front.html with sorted list of posts by created time.
+    """
     def get(self):
         deleted_post = self.request.get('deleted_post')
 
@@ -190,6 +210,8 @@ class BlogFront(BlogHandler):
 
 
 class PostPage(BlogHandler):
+    """Render permalink.html with POST method to add likes and comments.
+    """
     def get(self, post_id):
         key = db.Key.from_path('Post', int(post_id), parent=blog_key())
         post = db.get(key)
@@ -216,6 +238,7 @@ class PostPage(BlogHandler):
             error=error,
         )
 
+    @login_required
     def post(self, post_id):
         key = db.Key.from_path('Post', int(post_id), parent=blog_key())
         post = db.get(key)
@@ -224,55 +247,57 @@ class PostPage(BlogHandler):
             self.error(404)
             return
 
-        if self.user:
-            user_id = self.user.key().id()
+        user_id = self.user.key().id()
 
-            if self.request.get('like') and \
-               self.request.get('like') == 'update':
-                likes = Like.all()\
-                            .filter("post_id =", int(post_id))\
-                            .filter("user_id =", user_id)
+        if self.request.get('like') and \
+           self.request.get('like') == 'update':
+            likes = Like.all()\
+                        .filter("post_id =", int(post_id))\
+                        .filter("user_id =", user_id)
 
-                if user_id == post.user_id:
-                    self.redirect("/blog/" + post_id +
-                                  "?error=You cannot like your own post!")
-                elif likes.count() > 0:
-                    self.redirect("/blog/" + post_id +
-                                  "?error=You already liked this post!")
-                else:
-                    l = Like(
-                        parent=blog_key(),
-                        user_id=user_id,
-                        post_id=int(post_id),
-                    )
-                    l.put()
-                    self.redirect('/blog/' + post_id)
-
-            if self.request.get('new-comment'):
-                c = Comment(
+            if user_id == post.user_id:
+                self.redirect("/blog/" + post_id +
+                              "?error=You cannot like your own post!")
+                return
+            elif likes.count() > 0:
+                self.redirect("/blog/" + post_id +
+                              "?error=You already liked this post!")
+                return
+            else:
+                l = Like(
                     parent=blog_key(),
                     user_id=user_id,
                     post_id=int(post_id),
-                    user_name=User.by_id(user_id).name,
-                    comment=self.request.get('new-comment'),
                 )
-                c.put()
+                l.put()
                 self.redirect('/blog/' + post_id)
-        else:
-            self.redirect("/login?error=You need to login to like or comment!")
+                return
+
+        if self.request.get('new-comment'):
+            c = Comment(
+                parent=blog_key(),
+                user_id=user_id,
+                post_id=int(post_id),
+                user_name=User.by_id(user_id).name,
+                comment=self.request.get('new-comment'),
+            )
+            c.put()
+            self.redirect('/blog/' + post_id)
+            return
 
 
 class NewPost(BlogHandler):
+    """Render newpost.html that creates a new post.
+    """
     def get(self):
         if self.user:
             self.render("newpost.html")
         else:
             self.redirect("/login?error=You need to login to post!")
+            return
 
+    @login_required
     def post(self):
-        if not self.user:
-            self.redirect('/blog')
-
         subject = self.request.get('subject')
         content = self.request.get('content')
 
@@ -285,6 +310,7 @@ class NewPost(BlogHandler):
                 )
             p.put()
             self.redirect('/blog/%s' % str(p.key().id()))
+            return
         else:
             error = "subject and content, please!"
             self.render(
@@ -296,6 +322,8 @@ class NewPost(BlogHandler):
 
 
 class EditPost(BlogHandler):
+    """Render editpost.html to create update existing post.
+    """
     def get(self, post_id):
         if self.user:
             key = db.Key.from_path('Post', int(post_id), parent=blog_key())
@@ -315,92 +343,97 @@ class EditPost(BlogHandler):
                 self.redirect(
                     "/blog/%s?error=you can only edit your post!" % post_id
                 )
+                return
 
         else:
             self.redirect("/login?error=you need to login to edit post!")
+            return
 
+    @login_required
     def post(self, post_id):
-        if not self.user:
-            self.redirect('/blog/' + post_id +
-                          "?error=You need to login to edit!")
-
         subject = self.request.get('subject')
         content = self.request.get('content')
 
-        if subject and content:
-            key = db.Key.from_path('Post', int(post_id), parent=blog_key())
-            post = db.get(key)
+        key = db.Key.from_path('Post', int(post_id), parent=blog_key())
+        post = db.get(key)
 
-            post.subject = subject
-            post.content = content
-            post.put()
+        if post.user_id == self.user.key().id():
 
-            self.redirect('/blog/%s' % post_id)
+            if subject and content:
+                post.subject = subject
+                post.content = content
+                post.put()
+
+                self.redirect('/blog/%s' % post_id)
+                return
+            else:
+                error = "subject and content, please!"
+                self.render(
+                    "editpost.html",
+                    post_id=post_id,
+                    subject=subject,
+                    content=content,
+                    error=error,
+                )
         else:
-            error = "subject and content, please!"
-            self.render(
-                "editpost.html",
-                post_id=post_id,
-                subject=subject,
-                content=content,
-                error=error,
+            self.redirect(
+                "/blog/%s?error=you can only edit your post!" % post_id
             )
+            return
 
 
 class DeletePost(BlogHandler):
+    @login_required
     def get(self, post_id):
         key = db.Key.from_path('Post', int(post_id), parent=blog_key())
         post = db.get(key)
 
-        if self.user:
-            if not post:
-                self.error(404)
-                return
+        if not post:
+            self.error(404)
+            return
 
-            if post.user_id == self.user.key().id():
-                post.delete()
-                self.redirect("/blog?deleted_post=%s" % post.subject)
-            else:
-                self.redirect(
-                    "/blog/%s?error=you can only delete your post!"
-                    % post_id
-                )
-
+        if post.user_id == self.user.key().id():
+            post.delete()
+            self.redirect("/blog?deleted_post=%s" % post.subject)
+            return
         else:
-            self.redirect("/login?error=you need to login to delete post!")
+            self.redirect(
+                "/blog/%s?error=you can only delete your post!"
+                % post_id
+            )
+            return
 
 
 ###########
 # Comment #
 ###########
 class EditComment(BlogHandler):
+    """Render editcomment.html to edit existing comments.
+    """
+    @login_required
     def get(self, comment_id):
-        if self.user:
-            key = db.Key.from_path(
-                'Comment',
-                int(comment_id),
-                parent=blog_key(),
+        key = db.Key.from_path(
+            'Comment',
+            int(comment_id),
+            parent=blog_key(),
+        )
+        comment = db.get(key)
+
+        if comment.user_id == self.user.key().id():
+            self.render(
+                "editcomment.html",
+                comment=comment.comment,
+                post_id=comment.post_id,
             )
-            comment = db.get(key)
-
-            if comment.user_id == self.user.key().id():
-                self.render(
-                    "editcomment.html",
-                    comment=comment.comment,
-                    post_id=comment.post_id,
-                )
-            else:
-                self.redirect(
-                    "/blog/%s?error=you can only edit your comment!"
-                    % str(comment.post_id)
-                )
         else:
-            self.redirect("/login?error=you need to login to edit comment!")
+            self.redirect(
+                "/blog/%s?error=you can only edit your comment!"
+                % str(comment.post_id)
+            )
+            return
 
+    @login_required
     def post(self, comment_id):
-        if not self.user:
-            self.redirect("/login?error=you need to login to edit comment!")
-
         key = db.Key.from_path(
             'Comment',
             int(comment_id),
@@ -410,36 +443,44 @@ class EditComment(BlogHandler):
 
         comment_message = self.request.get('comment')
 
-        if comment_message:
-            comment.comment = comment_message
-            comment.put()
+        if comment.user_id == self.user.key().id():
+            if comment_message:
+                comment.comment = comment_message
+                comment.put()
 
-            self.redirect("/blog/%s" % str(comment.post_id))
+                self.redirect("/blog/%s" % str(comment.post_id))
+                return
+            else:
+                self.render(
+                    "editcomment.html",
+                    comment=comment_message,
+                    post_id=comment.post_id,
+                    error="comment message, please!",
+                )
         else:
-            self.render(
-                "editcomment.html",
-                comment=comment_message,
-                post_id=comment.post_id,
-                error="comment message, please!",
+            self.redirect(
+                "/blog/%s?error=you can only edit your comment!"
+                % str(comment.post_id)
             )
+            return
 
 
 class DeleteComment(BlogHandler):
+    @login_required
     def get(self, comment_id):
         key = db.Key.from_path('Comment', int(comment_id), parent=blog_key())
         comment = db.get(key)
 
-        if self.user:
-            if comment.user_id == self.user.key().id():
-                comment.delete()
-                self.redirect("/blog/%s" % str(comment.post_id))
-            else:
-                self.redirect(
-                    "/blog/%s?error=you can only delete your comment!"
-                    % str(comment.post_id)
-                )
+        if comment.user_id == self.user.key().id():
+            comment.delete()
+            self.redirect("/blog/%s" % str(comment.post_id))
+            return
         else:
-            self.redirect("/login?error=you need to login to delete comment!")
+            self.redirect(
+                "/blog/%s?error=you can only delete your comment!"
+                % str(comment.post_id)
+            )
+            return
 
 
 app = webapp2.WSGIApplication(

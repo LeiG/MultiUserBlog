@@ -1,6 +1,6 @@
 # MultiUserBlog
 
-This blog is built to run on Google App Engine.
+This blog is built to run on Google App Engine and publicly avaiable at [http://udacity-commitlogs.appspot.com/blog](http://udacity-commitlogs.appspot.com/blog).
 
 To test the application locally, you need to
 
